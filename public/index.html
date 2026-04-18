@@ -28,12 +28,57 @@
   </div>
 
   <div id="chat" style="display: none;">
-    <h2>Chat Room</h2>
-    <div id="messages"></div>
-    <form id="messageForm">
-      <input type="text" id="messageInput" placeholder="Type a message..." required>
-      <button type="submit">Send</button>
-    </form>
+    <div class="chat-topnav">
+      <button id="publicChatBtn" class="tab-button active">Public</button>
+      <button id="profileTabBtn" class="tab-button">Profile</button>
+    </div>
+
+    <div class="top-panels">
+      <div class="top-section">
+        <div class="top-section-header"><span>Direct Messages</span></div>
+        <div id="usersList" class="top-list"></div>
+      </div>
+      <div class="top-section">
+        <div class="top-section-header"><span>Groups</span></div>
+        <div id="groupsList" class="top-list"></div>
+        <form id="createGroupForm" class="create-group-form">
+          <input type="text" id="groupNameInput" placeholder="New group name" required>
+          <button type="submit">Create</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="contentPanels">
+      <section id="chatPanel" class="main-chat">
+        <div id="chatHeader" class="chat-header">Public Chat</div>
+        <div id="messages" class="messages"></div>
+        <form id="messageForm" class="message-form">
+          <input type="text" id="messageInput" placeholder="Type a message..." required>
+          <button type="submit" id="sendMessageBtn">Send</button>
+        </form>
+      </section>
+
+      <section id="profilePanel" class="profile-panel" style="display: none;">
+        <h3>My Profile</h3>
+        <div class="profile-card">
+          <div><strong>Username:</strong> <span id="profileUsername"></span></div>
+          <div><strong>Role:</strong> <span id="profileRole"></span></div>
+        </div>
+
+        <form id="changePasswordForm" class="profile-form">
+          <h4>Change Password</h4>
+          <input type="password" id="currentPassword" placeholder="Current password" required>
+          <input type="password" id="newPassword" placeholder="New password" required>
+          <input type="password" id="confirmPassword" placeholder="Confirm new password" required>
+          <button type="submit">Update Password</button>
+        </form>
+
+        <div class="sidebar-section profile-friends-section">
+          <h4>Friends</h4>
+          <div id="friendsList" class="sidebar-list"></div>
+        </div>
+      </section>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
