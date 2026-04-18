@@ -148,6 +148,12 @@ io.on('connection', (socket) => {
                 await db.promise().query('UPDATE users SET role = ? WHERE id = ?', [newRole, target.id]);
                 finalMessage = `${socket.username} ${command.slice(1)}d ${targetUsername} to ${newRole}`;
                 isCommand = true;
+                // Update socket role for online users
+                for (let [id, sock] of io.sockets.sockets) {
+                  if (sock.username === targetUsername) {
+                    sock.role = newRole;
+                  }
+                }
                 // Notify the target user if online
                 io.to('chat').emit('roleUpdate', { username: targetUsername, newRole });
               } else {
