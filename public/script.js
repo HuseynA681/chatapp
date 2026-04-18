@@ -26,10 +26,10 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
 
   const data = await response.json();
   if (response.ok) {
-    currentUser = { id: data.userId, username };
+    currentUser = { id: data.userId, username: data.username, role: data.role };
     document.getElementById('auth').style.display = 'none';
     document.getElementById('chat').style.display = 'block';
-    socket.emit('join', username);
+    socket.emit('join', { username: data.username, role: data.role });
   } else {
     alert(data.error);
   }
@@ -67,23 +67,28 @@ socket.on('message', (data) => {
   const messages = document.getElementById('messages');
   const messageElement = document.createElement('div');
   messageElement.className = 'message';
-  messageElement.textContent = `${data.username}: ${data.message}`;
+  const roleTag = getRoleTag(data.role);
+  messageElement.innerHTML = `${roleTag} ${data.username}: ${data.message}`;
   messages.appendChild(messageElement);
   messages.scrollTop = messages.scrollHeight;
 });
 
-socket.on('userJoined', (username) => {
+function getRoleTag(role) {
+  const colors = { owner: 'red', 'co-owner': 'blue', user: 'yellow' };
+  return `<span style="color: ${colors[role] || 'black'}">[${role.toUpperCase()}]</span>`;
+}
+
+socket.on('userJoined', (data) => {
   const messages = document.getElementById('messages');
   const messageElement = document.createElement('div');
   messageElement.className = 'userJoined';
-  messageElement.textContent = `${username} joined the chat`;
+  const roleTag = getRoleTag(data.role);
+  messageElement.innerHTML = `${roleTag} ${data.username} joined the chat`;
   messages.appendChild(messageElement);
 });
 
-socket.on('userLeft', (username) => {
-  const messages = document.getElementById('messages');
-  const messageElement = document.createElement('div');
-  messageElement.className = 'userLeft';
-  messageElement.textContent = `${username} left the chat`;
-  messages.appendChild(messageElement);
+socket.on('roleUpdate', (data) => {
+  if (data.username === currentUser.username) {
+    currentUser.role = data.newRole;
+  }
 });

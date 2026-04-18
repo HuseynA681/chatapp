@@ -57,7 +57,8 @@ app.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Insert user
-    const [result] = await db.promise().query('INSERT INTO users (username) VALUES (?)', [username]);
+    const role = username === 'Huseyn' ? 'owner' : 'user';
+    const [result] = await db.promise().query('INSERT INTO users (username, role) VALUES (?, ?)', [username, role]);
     const userId = result.insertId;
 
     // Insert password
@@ -79,7 +80,7 @@ app.post('/login', async (req, res) => {
 
   try {
     // Get user
-    const [rows] = await db.promise().query('SELECT u.id, p.password FROM users u JOIN passwords p ON u.id = p.user_id WHERE u.username = ?', [username]);
+    const [rows] = await db.promise().query('SELECT u.id, u.role, p.password FROM users u JOIN passwords p ON u.id = p.user_id WHERE u.username = ?', [username]);
     if (rows.length === 0) {
       return res.status(400).json({ error: 'User not found. Please register first.' });
     }
@@ -90,7 +91,7 @@ app.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Invalid password' });
     }
 
-    res.json({ message: 'Login successful', userId: user.id, username });
+    res.json({ message: 'Login successful', userId: user.id, username, role: user.role });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal server error' });
@@ -101,17 +102,79 @@ app.post('/login', async (req, res) => {
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('join', (username) => {
-    socket.username = username;
+  socket.on('join', (data) => {
+    socket.username = data.username;
+    socket.role = data.role;
     socket.join('chat');
-    io.to('chat').emit('userJoined', username);
+    io.to('chat').emit('userJoined', { username: data.username, role: data.role });
   });
 
   socket.on('sendMessage', async (data) => {
     const { message, userId } = data;
+    let finalMessage = message;
+    let isCommand = false;
+
+    if (message.startsWith('/')) {
+      const parts = message.split(' ');
+      const command = parts[0];
+      const targetUsername = parts[1];
+
+      if ((command === '/promote' || command === '/demote') && targetUsername) {
+        if (socket.role === 'owner' || socket.role === 'co-owner') {
+          try {
+            // Get target user
+            const [rows] = await db.promise().query('SELECT id, role FROM users WHERE username = ?', [targetUsername]);
+            if (rows.length > 0) {
+              const target = rows[0];
+              let newRole = target.role;
+
+              if (command === '/promote') {
+                if (socket.role === 'owner') {
+                  if (target.role === 'user') newRole = 'co-owner';
+                  else if (target.role === 'co-owner') newRole = 'owner';
+                } else if (socket.role === 'co-owner' && target.role === 'user') {
+                  newRole = 'co-owner';
+                }
+              } else if (command === '/demote') {
+                if (socket.role === 'owner') {
+                  if (target.role === 'co-owner') newRole = 'user';
+                  else if (target.role === 'owner') newRole = 'co-owner'; // can't demote owner
+                } else if (socket.role === 'co-owner' && target.role === 'co-owner') {
+                  newRole = 'user';
+                }
+              }
+
+              if (newRole !== target.role) {
+                await db.promise().query('UPDATE users SET role = ? WHERE id = ?', [newRole, target.id]);
+                finalMessage = `${socket.username} ${command.slice(1)}d ${targetUsername} to ${newRole}`;
+                isCommand = true;
+                // Notify the target user if online
+                io.to('chat').emit('roleUpdate', { username: targetUsername, newRole });
+              } else {
+                finalMessage = `Cannot ${command.slice(1)} ${targetUsername}`;
+                isCommand = true;
+              }
+            } else {
+              finalMessage = `User ${targetUsername} not found`;
+              isCommand = true;
+            }
+          } catch (error) {
+            console.error(error);
+            finalMessage = 'Command failed';
+            isCommand = true;
+          }
+        } else {
+          finalMessage = 'You do not have permission to use this command';
+          isCommand = true;
+        }
+      }
+    }
+
     try {
-      await db.promise().query('INSERT INTO messages (user_id, message) VALUES (?, ?)', [userId, message]);
-      io.to('chat').emit('message', { username: socket.username, message });
+      if (!isCommand || finalMessage !== message) {
+        await db.promise().query('INSERT INTO messages (user_id, message) VALUES (?, ?)', [userId, finalMessage]);
+      }
+      io.to('chat').emit('message', { username: socket.username, message: finalMessage, role: socket.role, isCommand });
     } catch (error) {
       console.error(error);
     }
@@ -119,7 +182,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
-    io.to('chat').emit('userLeft', socket.username);
+    io.to('chat').emit('userLeft', { username: socket.username, role: socket.role });
   });
 });
 
