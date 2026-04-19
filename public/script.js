@@ -72,6 +72,11 @@ async function joinRoom(room) {
   clearMessages();
   socket.emit('joinRoom', room);
   await loadRoomMessages(room);
+  if (room.type === 'group') {
+    await loadGroupMembers(room.groupId);
+  } else {
+    hideGroupControls();
+  }
 }
 
 function joinPublic() {
@@ -154,6 +159,62 @@ async function loadGroups() {
     });
     groupsList.appendChild(item);
   });
+}
+
+function hideGroupControls() {
+  const groupControls = document.getElementById('groupControls');
+  if (groupControls) {
+    groupControls.style.display = 'none';
+  }
+  const selector = document.getElementById('groupMemberSelect');
+  if (selector) {
+    selector.innerHTML = '<option value="">Select user to add</option>';
+  }
+  const list = document.getElementById('groupMembersList');
+  if (list) {
+    list.innerHTML = '';
+  }
+}
+
+async function loadGroupMembers(groupId) {
+  const membersResponse = await fetch(`/group-members?groupId=${groupId}`);
+  if (!membersResponse.ok) return;
+  const membersData = await membersResponse.json();
+  const usersResponse = await fetch(`/users?userId=${currentUser.id}`);
+  if (!usersResponse.ok) return;
+  const usersData = await usersResponse.json();
+
+  const members = membersData.members || [];
+  const users = usersData.users || [];
+  const groupMembersList = document.getElementById('groupMembersList');
+  const groupControls = document.getElementById('groupControls');
+  const selector = document.getElementById('groupMemberSelect');
+
+  if (groupControls) {
+    groupControls.style.display = 'block';
+  }
+
+  if (groupMembersList) {
+    groupMembersList.innerHTML = '';
+    members.forEach((member) => {
+      const item = document.createElement('div');
+      item.className = 'sidebar-item';
+      item.innerHTML = `<span>${member.username} (${member.role})</span><span>Member</span>`;
+      groupMembersList.appendChild(item);
+    });
+  }
+
+  if (selector) {
+    selector.innerHTML = '<option value="">Select user to add</option>';
+    users
+      .filter((user) => user.id !== currentUser.id && !members.some((member) => member.id === user.id))
+      .forEach((user) => {
+        const option = document.createElement('option');
+        option.value = user.id;
+        option.textContent = `${user.username} (${user.role})${user.online ? ' online' : ''}`;
+        selector.appendChild(option);
+      });
+  }
 }
 
 async function loadFriends() {
@@ -265,30 +326,71 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  document.getElementById('addGroupMemberForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const select = document.getElementById('groupMemberSelect');
+    const memberId = select.value;
+    if (!memberId || !currentRoom || currentRoom.type !== 'group') return;
+
+    const response = await fetch('/groups/add-member', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groupId: currentRoom.groupId, userId: currentUser.id, memberId: parseInt(memberId, 10) })
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      await loadGroupMembers(currentRoom.groupId);
+    } else {
+      alert(data.error || 'Unable to add member');
+    }
+  });
+
   document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const currentPassword = document.getElementById('currentPassword').value;
-    const newPassword = document.getElementById('newPassword').value;
-    const confirmPassword = document.getElementById('confirmPassword').value;
+    if (!currentUser) {
+      alert('You must be logged in to change your password.');
+      return;
+    }
+
+    const currentPassword = document.getElementById('currentPassword').value.trim();
+    const newPassword = document.getElementById('newPassword').value.trim();
+    const confirmPassword = document.getElementById('confirmPassword').value.trim();
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      alert('All password fields are required.');
+      return;
+    }
+
     if (newPassword !== confirmPassword) {
       alert('Passwords do not match');
       return;
     }
 
-    const response = await fetch('/profile/change-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: currentUser.id, currentPassword, newPassword })
-    });
+    if (currentPassword === newPassword) {
+      alert('Your new password must be different from the current password.');
+      return;
+    }
 
-    const data = await response.json();
-    if (response.ok) {
-      alert(data.message);
-      document.getElementById('currentPassword').value = '';
-      document.getElementById('newPassword').value = '';
-      document.getElementById('confirmPassword').value = '';
-    } else {
-      alert(data.error);
+    try {
+      const response = await fetch('/profile/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, currentPassword, newPassword })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        alert(data.message);
+        document.getElementById('currentPassword').value = '';
+        document.getElementById('newPassword').value = '';
+        document.getElementById('confirmPassword').value = '';
+      } else {
+        alert(data.error || `Could not change password (${response.status})`);
+      }
+    } catch (error) {
+      console.error('Password change failed:', error);
+      alert('Unable to change password right now. Please try again later.');
     }
   });
 

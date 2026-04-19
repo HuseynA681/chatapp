@@ -194,8 +194,21 @@ button:hover {
   margin-top: 8px;
 }
 
-.create-group-form input {
+.create-group-form input,
+.create-group-form select {
   flex: 1;
+}
+
+.group-controls {
+  margin-top: 12px;
+  background: #fff;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.group-controls .top-section-header {
+  margin-bottom: 10px;
 }
 
 .main-chat {

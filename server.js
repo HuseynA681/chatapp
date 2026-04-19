@@ -223,8 +223,13 @@ app.post('/friends', async (req, res) => {
 
 app.post('/profile/change-password', async (req, res) => {
   const { userId, currentPassword, newPassword } = req.body;
+  console.log('change-password request', { userId, currentPassword: currentPassword ? '***' : null, newPassword: newPassword ? '***' : null });
   if (!userId || !currentPassword || !newPassword) {
     return res.status(400).json({ error: 'userId, currentPassword, and newPassword required' });
+  }
+
+  if (currentPassword === newPassword) {
+    return res.status(400).json({ error: 'New password must be different from the current password' });
   }
 
   try {
@@ -242,7 +247,7 @@ app.post('/profile/change-password', async (req, res) => {
     await db.promise().query('UPDATE passwords SET password = ? WHERE user_id = ?', [hashedPassword, userId]);
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
-    console.error(error);
+    console.error('change-password error', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -279,6 +284,70 @@ app.post('/groups', async (req, res) => {
     res.json({ id: result.insertId, name });
   } catch (error) {
     console.error(error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ error: 'Group name already exists' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/group-members', async (req, res) => {
+  const groupId = req.query.groupId;
+  if (!groupId) {
+    return res.status(400).json({ error: 'groupId required' });
+  }
+
+  try {
+    const [rows] = await db.promise().query(
+      `SELECT u.id, u.username, u.role
+       FROM group_members gm
+       JOIN users u ON gm.user_id = u.id
+       WHERE gm.group_id = ?
+       ORDER BY u.username`,
+      [groupId]
+    );
+    res.json({ members: rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/groups/add-member', async (req, res) => {
+  const { groupId, userId, memberId } = req.body;
+  if (!groupId || !userId || !memberId) {
+    return res.status(400).json({ error: 'groupId, userId, and memberId required' });
+  }
+
+  try {
+    const [membershipCheck] = await db.promise().query(
+      'SELECT id FROM group_members WHERE group_id = ? AND user_id = ?',
+      [groupId, userId]
+    );
+    if (membershipCheck.length === 0) {
+      return res.status(403).json({ error: 'You must be a group member to add users' });
+    }
+
+    const [groupCheck] = await db.promise().query('SELECT id FROM chat_groups WHERE id = ?', [groupId]);
+    if (groupCheck.length === 0) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const [userCheck] = await db.promise().query('SELECT id FROM users WHERE id = ?', [memberId]);
+    if (userCheck.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await db.promise().query(
+      'INSERT INTO group_members (group_id, user_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE user_id = user_id',
+      [groupId, memberId]
+    );
+    res.json({ message: 'Member added to group' });
+  } catch (error) {
+    console.error(error);
+    if (error.code === 'ER_NO_REFERENCED_ROW_2' || error.code === 'ER_NO_REFERENCED_ROW') {
+      return res.status(400).json({ error: 'Invalid group or user ID' });
+    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });

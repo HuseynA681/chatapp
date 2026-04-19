@@ -45,6 +45,16 @@
           <input type="text" id="groupNameInput" placeholder="New group name" required>
           <button type="submit">Create</button>
         </form>
+        <div id="groupControls" class="group-controls" style="display:none; margin-top: 12px;">
+          <div class="top-section-header"><span>Group Members</span></div>
+          <div id="groupMembersList" class="top-list"></div>
+          <form id="addGroupMemberForm" class="create-group-form">
+            <select id="groupMemberSelect">
+              <option value="">Select user to add</option>
+            </select>
+            <button type="submit">Add</button>
+          </form>
+        </div>
       </div>
     </div>
 
